@@ -46,3 +46,11 @@ func (r *Registry) Summaries() []Summary {
 	})
 	return out
 }
+
+func (r *Registry) Actions(kind device.Kind) ([]ActionSpec, error) {
+	d, err := r.Get(kind)
+	if err != nil {
+		return nil, err
+	}
+	return d.Actions(), nil
+}

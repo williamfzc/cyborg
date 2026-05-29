@@ -83,31 +83,12 @@ func TestExecute_DoWithoutAction(t *testing.T) {
 	}
 }
 
-func TestExecute_BrowserNoArgs(t *testing.T) {
+func TestExecute_UnsupportedCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := Execute([]string{"browser"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("expected exit code 0, got %d", code)
-	}
-	if !strings.Contains(stdout.String(), "cyborg browser") {
-		t.Fatalf("expected browser help in stdout, got: %s", stdout.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected no stderr output, got: %s", stderr.String())
-	}
-}
-
-func TestExecute_AndroidNoArgs(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := Execute([]string{"android"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("expected exit code 0, got %d", code)
-	}
-	if !strings.Contains(stdout.String(), "cyborg android") {
-		t.Fatalf("expected android help in stdout, got: %s", stdout.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	// "browser" is no longer a top-level command; should fail
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d (stdout=%s)", code, stdout.String())
 	}
 }
 

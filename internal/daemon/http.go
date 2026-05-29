@@ -78,6 +78,7 @@ func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/drivers", s.handleDrivers)
+	mux.HandleFunc("/drivers/", s.handleDriverActions)
 	mux.HandleFunc("/devices", s.handleDevices)
 	mux.HandleFunc("/devices/", s.handleDeviceByID)
 	mux.HandleFunc("/actions", s.handleActions)
@@ -98,6 +99,23 @@ func (s *Server) handleDrivers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.DriverSummaries())
+}
+
+func (s *Server) handleDriverActions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	// Path: /drivers/<kind>/actions
+	path := strings.TrimPrefix(r.URL.Path, "/drivers/")
+	parts := strings.SplitN(path, "/", 2)
+	kind := device.Kind(parts[0])
+	actions, err := s.DriverActions(kind)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, actions)
 }
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {

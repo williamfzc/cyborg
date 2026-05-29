@@ -45,18 +45,62 @@ func (d *Driver) Summary() coredriver.Summary {
 		Kind:    device.KindAndroid,
 		Backend: "android/adb",
 		Capabilities: []string{
-			"click",
-			"type",
-			"press",
-			"screenshot",
-			"tree",
-			"shell",
-			"install",
-			"swipe",
+			"click", "type", "press", "screenshot",
+			"tree", "shell", "install", "swipe",
 		},
 		Notes: []string{
 			"Connects to adb-attached devices (real or emulator)",
 			"Use --serial to specify a device, or auto-detects if only one is connected",
+			"target strategies: text (default), id, acc, xy",
+		},
+	}
+}
+
+func (d *Driver) Actions() []coredriver.ActionSpec {
+	return []coredriver.ActionSpec{
+		{
+			Name:        "click",
+			Description: "Tap an element or coordinate",
+			Params:      []coredriver.ParamSpec{{Name: "target", Description: "Element locator (text:label | id:resource-id | acc:content-desc | xy:x,y)", Required: true}},
+		},
+		{
+			Name:        "type",
+			Description: "Type text (inputs at current focus)",
+			Params:      []coredriver.ParamSpec{{Name: "text", Description: "Text to type", Required: true}},
+		},
+		{
+			Name:        "press",
+			Description: "Press a hardware/soft key",
+			Params:      []coredriver.ParamSpec{{Name: "key", Description: "Key name (enter, back, home, etc.) or KEYCODE_*", Required: true}},
+		},
+		{
+			Name:        "screenshot",
+			Description: "Capture device screen",
+			Params:      []coredriver.ParamSpec{{Name: "path", Description: "Output file path (auto-generated if omitted)"}},
+		},
+		{
+			Name:        "tree",
+			Description: "Dump UI hierarchy as XML",
+			Params:      nil,
+		},
+		{
+			Name:        "shell",
+			Description: "Run an adb shell command",
+			Params:      []coredriver.ParamSpec{{Name: "cmd", Description: "Shell command string", Required: true}},
+		},
+		{
+			Name:        "install",
+			Description: "Install an APK",
+			Params:      []coredriver.ParamSpec{{Name: "apk", Description: "Path to APK file", Required: true}},
+		},
+		{
+			Name:        "swipe",
+			Description: "Swipe gesture between two points",
+			Params: []coredriver.ParamSpec{
+				{Name: "from", Description: "Start coordinates (x,y)", Required: true},
+				{Name: "to", Description: "End coordinates (x,y)", Required: true},
+				{Name: "duration", Description: "Duration in ms (default 300)"},
+			},
 		},
 	}
 }
@@ -193,21 +237,43 @@ func (d *Driver) Act(ctx context.Context, dev device.Device, req action.Action) 
 // --- action implementations ---
 
 func (d *Driver) actClick(ctx context.Context, adbPath string, session *liveSession, req action.Action) (action.Result, error) {
-	// Support both coordinate-based and selector-based click
-	selector := stringParam(req.Params, "selector")
-	if selector != "" {
-		return d.clickBySelector(ctx, adbPath, session, selector)
+	target := stringParam(req.Params, "target")
+	if target == "" {
+		// Fallback: accept legacy --selector or --x/--y params
+		target = stringParam(req.Params, "selector")
+		if target == "" {
+			xStr := stringParam(req.Params, "x")
+			yStr := stringParam(req.Params, "y")
+			if xStr != "" && yStr != "" {
+				target = "xy:" + xStr + "," + yStr
+			}
+		}
 	}
-	xStr := stringParam(req.Params, "x")
-	yStr := stringParam(req.Params, "y")
-	if xStr != "" && yStr != "" {
-		_, err := adbShell(ctx, adbPath, session.serial, "input", "tap", xStr, yStr)
+	if target == "" {
+		return invalidParam("missing --target (e.g. text:Login, id:com.app:id/btn, xy:540,1200)"), nil
+	}
+
+	t := action.ParseTarget(target, action.StrategyText)
+	switch t.Strategy {
+	case action.StrategyXY:
+		parts := strings.SplitN(t.Value, ",", 2)
+		if len(parts) != 2 {
+			return invalidParam("xy target must be in format xy:x,y"), nil
+		}
+		_, err := adbShell(ctx, adbPath, session.serial, "input", "tap", parts[0], parts[1])
 		if err != nil {
 			return runtimeError("CLICK_FAILED", err), nil
 		}
-		return action.Result{OK: true, Result: map[string]any{"x": xStr, "y": yStr}}, nil
+		return action.Result{OK: true, Result: map[string]any{"x": parts[0], "y": parts[1]}}, nil
+	case action.StrategyText:
+		return d.clickBySelector(ctx, adbPath, session, "text="+t.Value)
+	case action.StrategyID:
+		return d.clickBySelector(ctx, adbPath, session, "resource-id="+t.Value)
+	case action.StrategyAcc:
+		return d.clickBySelector(ctx, adbPath, session, "content-desc="+t.Value)
+	default:
+		return invalidParam(fmt.Sprintf("unsupported target strategy %q for android; use text:, id:, acc:, or xy:", t.Strategy)), nil
 	}
-	return invalidParam("missing --selector or --x/--y"), nil
 }
 
 func (d *Driver) clickBySelector(ctx context.Context, adbPath string, session *liveSession, selector string) (action.Result, error) {

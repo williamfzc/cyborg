@@ -31,8 +31,7 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "help", "-h", "--help":
-		printHelp(stdout)
-		return 0
+		return runHelpCommand(args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintf(stdout, "%s\n", version)
 		return 0
@@ -56,16 +55,6 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		if len(args) < 2 {
 			_, _ = fmt.Fprintln(stderr, "missing action name")
 			return 1
-		}
-	case "browser":
-		if len(args) < 2 {
-			printKindHelp(device.KindBrowser, stdout)
-			return 0
-		}
-	case "android":
-		if len(args) < 2 {
-			printKindHelp(device.KindAndroid, stdout)
-			return 0
 		}
 	case "up":
 		if len(args) < 2 {
@@ -109,15 +98,46 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		}
 		return writeJSON(stdout, map[string]any{"ok": true, "device_id": args[1]})
 	case "do":
-		return runDoCommand(ctx, client, args[1:], "", stdout, stderr)
-	case "browser":
-		return runKindCommand(ctx, client, device.KindBrowser, args[1:], stdout, stderr)
-	case "android":
-		return runKindCommand(ctx, client, device.KindAndroid, args[1:], stdout, stderr)
+		return runDoCommand(ctx, client, args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "unsupported command: %s\n", args[0])
 		return 1
 	}
+}
+
+func runHelpCommand(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printHelp(stdout)
+		return 0
+	}
+	// cyborg help <kind> — query daemon for that kind's action list
+	kind := device.Kind(args[0])
+	client := daemonclient.NewDefault()
+	if err := ensureDaemon(client); err != nil {
+		// Daemon not available; show static help
+		_, _ = fmt.Fprintf(stdout, "cyborg help %s — daemon not available, cannot fetch actions\n", kind)
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	actions, err := client.DriverActions(ctx, kind)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "no driver registered for kind %q\n", kind)
+		return 1
+	}
+	_, _ = fmt.Fprintf(stdout, "cyborg do — actions for %s devices:\n\n", kind)
+	for _, a := range actions {
+		_, _ = fmt.Fprintf(stdout, "  %-12s %s\n", a.Name, a.Description)
+		for _, p := range a.Params {
+			req := ""
+			if p.Required {
+				req = " (required)"
+			}
+			_, _ = fmt.Fprintf(stdout, "    --%-10s %s%s\n", p.Name, p.Description, req)
+		}
+	}
+	_, _ = fmt.Fprintln(stdout, "\nIf only one device exists, --device can be omitted.")
+	return 0
 }
 
 func runDebugCommand(ctx context.Context, client *daemonclient.Client, args []string, stdout, stderr io.Writer) int {
@@ -164,9 +184,8 @@ func runUpCommand(ctx context.Context, client *daemonclient.Client, args []strin
 	return writeJSON(stdout, dev)
 }
 
-// runDoCommand dispatches an action to the specified device.
-// If expectKind is non-empty, the target device must match that kind.
-func runDoCommand(ctx context.Context, client *daemonclient.Client, args []string, expectKind device.Kind, stdout, stderr io.Writer) int {
+// runDoCommand dispatches an action to a device.
+func runDoCommand(ctx context.Context, client *daemonclient.Client, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		_, _ = fmt.Fprintln(stderr, "missing action name")
 		return 1
@@ -191,40 +210,6 @@ func runDoCommand(ctx context.Context, client *daemonclient.Client, args []strin
 		delete(req.Params, "timeout_ms")
 	}
 
-	// Validate device kind if required
-	if expectKind != "" {
-		var targetDev device.Device
-		if req.DeviceID != "" {
-			dev, err := client.Show(ctx, req.DeviceID)
-			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "get device failed: %v\n", err)
-				return 1
-			}
-			targetDev = dev
-		} else {
-			// Auto-resolve: list all and pick the single one
-			devices, err := client.List(ctx)
-			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "list devices failed: %v\n", err)
-				return 1
-			}
-			switch len(devices) {
-			case 0:
-				_, _ = fmt.Fprintln(stderr, "no devices available; create one with 'cyborg up'")
-				return 1
-			case 1:
-				targetDev = devices[0]
-			default:
-				_, _ = fmt.Fprintln(stderr, "multiple devices exist; specify --device=<id>")
-				return 1
-			}
-		}
-		if targetDev.Kind != expectKind {
-			_, _ = fmt.Fprintf(stderr, "device %q is %q, but this command requires a %q device\n", targetDev.ID, targetDev.Kind, expectKind)
-			return 1
-		}
-	}
-
 	result, err := client.Act(ctx, req)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "execute action failed: %v\n", err)
@@ -235,15 +220,6 @@ func runDoCommand(ctx context.Context, client *daemonclient.Client, args []strin
 		return 2
 	}
 	return writeJSON(stdout, result)
-}
-
-// runKindCommand handles `device <kind> <action>` — device-specific sub-commands.
-func runKindCommand(ctx context.Context, client *daemonclient.Client, kind device.Kind, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		printKindHelp(kind, stdout)
-		return 0
-	}
-	return runDoCommand(ctx, client, args, kind, stdout, stderr)
 }
 
 func runDaemonCommand(args []string, stdout, stderr io.Writer) int {
@@ -367,76 +343,46 @@ func stopListenerOnDefaultPort() error {
 }
 
 func printHelp(w io.Writer) {
-	_, _ = io.WriteString(w, `cyborg
+	_, _ = io.WriteString(w, `cyborg — local device control plane
 
 Usage:
-  cyborg version
-  cyborg up <browser|android> [options]
-  cyborg ls
-  cyborg show <device-id>
-  cyborg rm <device-id>
+  cyborg up <kind> [options]        Create a device target
+  cyborg ls                         List devices (pool status)
+  cyborg show <device-id>           Show device details and capabilities
+  cyborg rm <device-id>             Remove a device
+  cyborg do <action> [flags]        Execute an action on a device
 
-Universal actions (work on any device):
-  cyborg do click --device=<id> --selector=<sel>
-  cyborg do type --device=<id> --selector=<sel> --text=<text>
-  cyborg do press --device=<id> --key=<key>
-  cyborg do screenshot --device=<id> [--path=<file>]
+Discovery:
+  cyborg help <kind>                Show actions for a device kind
+  cyborg version                    Print version
 
-Device-specific commands (hierarchical):
-  cyborg browser <action> --device=<id> [flags]
-  cyborg android <action> --device=<id> [flags]
+Supported kinds: browser, android (more via drivers)
+
+Targeting elements (--target flag):
+  css:<selector>                    CSS selector (browser default)
+  text:<visible text>               Text match (android default)
+  id:<native-id>                    DOM id / resource-id / accessibility-id
+  acc:<label>                       Accessibility label (aria-label / content-desc)
+  xy:<x>,<y>                        Screen coordinates
+
+Examples:
+  cyborg up browser --headless
+  cyborg do open --url=https://example.com
+  cyborg do click --target="css:button.submit"
+  cyborg do screenshot
+  cyborg do click --target="text:Login" --device=android-abc123
 
 If only one device exists, --device can be omitted.
 
-Examples:
-  cyborg up browser --headless=true
-  cyborg do click --device=browser-abc123 --selector='button'
-  cyborg do screenshot
-  cyborg browser open --url=https://example.com
-  cyborg browser eval --code='document.title'
-
-Run 'cyborg browser' or 'cyborg android' for device-specific help.
+Device reuse (no automatic pooling — caller decides):
+  1. cyborg ls                        Check existing devices
+  2. If a running device fits → use it directly with cyborg do
+  3. If none fits → cyborg up to create a new one
 
 Debug:
   cyborg debug status
   cyborg debug drivers
 `)
-}
-
-func printKindHelp(kind device.Kind, w io.Writer) {
-	switch kind {
-	case device.KindBrowser:
-		_, _ = io.WriteString(w, `cyborg browser — browser-specific commands
-
-Usage:
-  cyborg browser <action> --device=<id> [flags]
-
-Actions:
-  open    --url=<url>           Navigate to a URL
-  eval    --code=<js>           Evaluate JavaScript in page context
-
-If only one device exists, --device can be omitted.
-Use 'cyborg do' for universal actions (click, type, press, screenshot).
-`)
-	case device.KindAndroid:
-		_, _ = io.WriteString(w, `cyborg android — android-specific commands
-
-Usage:
-  cyborg android <action> --device=<id> [flags]
-
-Actions:
-  tree                           Dump UI hierarchy
-  shell   --cmd=<command>        Run adb shell command
-  install --apk=<path>           Install an APK
-  swipe   --from=<x,y> --to=<x,y>  Swipe gesture
-  observe                        Observe screen state
-
-If only one device exists, --device can be omitted.
-Use 'cyborg do' for universal actions (click, type, press, screenshot).
-`)
-	default:
-		_, _ = fmt.Fprintf(w, "no help available for device kind %q\n", kind)
-	}
 }
 
 func writeJSON(w io.Writer, v any) int {

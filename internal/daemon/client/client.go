@@ -57,6 +57,16 @@ func (c *Client) Drivers(ctx context.Context) ([]coredriver.Summary, error) {
 	return out, json.NewDecoder(resp.Body).Decode(&out)
 }
 
+func (c *Client) DriverActions(ctx context.Context, kind device.Kind) ([]coredriver.ActionSpec, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/drivers/"+string(kind)+"/actions", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []coredriver.ActionSpec
+	return out, json.NewDecoder(resp.Body).Decode(&out)
+}
+
 func (c *Client) Create(ctx context.Context, kind device.Kind, options map[string]any) (device.Device, error) {
 	resp, err := c.do(ctx, http.MethodPost, "/devices", map[string]any{"kind": kind, "options": options})
 	if err != nil {

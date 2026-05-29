@@ -65,6 +65,10 @@ func (s *Server) DriverSummaries() []coredriver.Summary {
 	return s.registry.Summaries()
 }
 
+func (s *Server) DriverActions(kind device.Kind) ([]coredriver.ActionSpec, error) {
+	return s.registry.Actions(kind)
+}
+
 func (s *Server) Create(ctx context.Context, kind device.Kind, options map[string]any) (device.Device, error) {
 	d, err := s.registry.Get(kind)
 	if err != nil {

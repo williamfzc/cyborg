@@ -48,16 +48,50 @@ func (d *Driver) Summary() coredriver.Summary {
 		Kind:    device.KindBrowser,
 		Backend: "chromium/cdp",
 		Capabilities: []string{
-			"open_url",
-			"click",
-			"type",
-			"press",
-			"screenshot",
-			"eval_js",
+			"open", "click", "type", "press", "screenshot", "eval",
 		},
 		Notes: []string{
 			"v0 focuses on Chromium-compatible browsers only",
 			"the daemon owns browser contexts for repeated agent actions",
+			"target strategies: css (default), id, acc",
+		},
+	}
+}
+
+func (d *Driver) Actions() []coredriver.ActionSpec {
+	return []coredriver.ActionSpec{
+		{
+			Name:        "open",
+			Description: "Navigate to a URL",
+			Params:      []coredriver.ParamSpec{{Name: "url", Description: "URL to navigate to", Required: true}},
+		},
+		{
+			Name:        "click",
+			Description: "Click an element",
+			Params:      []coredriver.ParamSpec{{Name: "target", Description: "Element locator (css:sel | id:id | acc:label)", Required: true}},
+		},
+		{
+			Name:        "type",
+			Description: "Type text into an element",
+			Params: []coredriver.ParamSpec{
+				{Name: "target", Description: "Element locator", Required: true},
+				{Name: "text", Description: "Text to type", Required: true},
+			},
+		},
+		{
+			Name:        "press",
+			Description: "Press a keyboard key",
+			Params:      []coredriver.ParamSpec{{Name: "key", Description: "Key name (Enter, Tab, Escape, etc.)", Required: true}},
+		},
+		{
+			Name:        "screenshot",
+			Description: "Capture viewport screenshot",
+			Params:      []coredriver.ParamSpec{{Name: "path", Description: "Output file path (auto-generated if omitted)"}},
+		},
+		{
+			Name:        "eval",
+			Description: "Evaluate JavaScript in page context",
+			Params:      []coredriver.ParamSpec{{Name: "code", Description: "JavaScript expression", Required: true}},
 		},
 	}
 }
@@ -105,12 +139,7 @@ func (d *Driver) Create(ctx context.Context, spec coredriver.CreateSpec) (device
 		CreatedAt: now,
 		UpdatedAt: now,
 		Capabilities: []string{
-			"open_url",
-			"click",
-			"type",
-			"press",
-			"screenshot",
-			"eval_js",
+			"open", "click", "type", "press", "screenshot", "eval",
 		},
 		Metadata: map[string]any{
 			"driver":          "browser-playwright",
@@ -137,7 +166,7 @@ func (d *Driver) Create(ctx context.Context, spec coredriver.CreateSpec) (device
 	if initialURL := stringOption(spec.Options, "url"); initialURL != "" {
 		result, err := d.Act(ctx, dev, action.Action{
 			DeviceID: dev.ID,
-			Name:     "open-url",
+			Name:     "open",
 			Params: map[string]any{
 				"url": initialURL,
 			},
@@ -195,7 +224,7 @@ func (d *Driver) Act(_ context.Context, dev device.Device, req action.Action) (a
 	}
 
 	switch normalizeActionName(req.Name) {
-	case "open_url":
+	case "open", "open_url":
 		url := stringParam(req.Params, "url")
 		if url == "" {
 			return invalidParam("missing --url"), nil
@@ -204,13 +233,21 @@ func (d *Driver) Act(_ context.Context, dev device.Device, req action.Action) (a
 			chromedp.Navigate(url),
 			chromedp.Sleep(700*time.Millisecond),
 		); err != nil {
-			return runtimeError("OPEN_URL_FAILED", err), nil
+			return runtimeError("OPEN_FAILED", err), nil
 		}
 		return action.Result{OK: true, Result: map[string]any{"url": url}}, nil
 	case "click":
-		selector := stringParam(req.Params, "selector")
-		if selector == "" {
-			return invalidParam("missing --selector"), nil
+		target := stringParam(req.Params, "target")
+		if target == "" {
+			// Fallback: accept legacy --selector param
+			target = stringParam(req.Params, "selector")
+		}
+		if target == "" {
+			return invalidParam("missing --target"), nil
+		}
+		selector, err := d.resolveSelector(target)
+		if err != nil {
+			return invalidParam(err.Error()), nil
 		}
 		if err := chromedp.Run(runCtx,
 			chromedp.WaitVisible(selector, chromedp.ByQuery),
@@ -218,12 +255,19 @@ func (d *Driver) Act(_ context.Context, dev device.Device, req action.Action) (a
 		); err != nil {
 			return runtimeError("CLICK_FAILED", err), nil
 		}
-		return action.Result{OK: true}, nil
+		return action.Result{OK: true, Result: map[string]any{"target": target}}, nil
 	case "type":
-		selector := stringParam(req.Params, "selector")
+		target := stringParam(req.Params, "target")
+		if target == "" {
+			target = stringParam(req.Params, "selector")
+		}
 		text := stringParam(req.Params, "text")
-		if selector == "" {
-			return invalidParam("missing --selector"), nil
+		if target == "" {
+			return invalidParam("missing --target"), nil
+		}
+		selector, err := d.resolveSelector(target)
+		if err != nil {
+			return invalidParam(err.Error()), nil
 		}
 		if err := chromedp.Run(runCtx,
 			chromedp.WaitVisible(selector, chromedp.ByQuery),
@@ -259,14 +303,14 @@ func (d *Driver) Act(_ context.Context, dev device.Device, req action.Action) (a
 		}
 		artifact := action.Artifact{Kind: "screenshot", Path: path, Name: filepath.Base(path)}
 		return action.Result{OK: true, Artifacts: []action.Artifact{artifact}, Result: map[string]any{"path": path}}, nil
-	case "eval_js":
+	case "eval", "eval_js":
 		code := stringParam(req.Params, "code")
 		if code == "" {
 			return invalidParam("missing --code"), nil
 		}
 		var result any
 		if err := chromedp.Run(runCtx, chromedp.Evaluate(code, &result)); err != nil {
-			return runtimeError("EVAL_JS_FAILED", err), nil
+			return runtimeError("EVAL_FAILED", err), nil
 		}
 		return action.Result{OK: true, Result: map[string]any{"value": result}}, nil
 	default:
@@ -348,13 +392,36 @@ func stringParam(params map[string]any, key string) string {
 func normalizeActionName(name string) string {
 	if mapped, ok := map[string]string{
 		"open-url": "open_url",
-		"open":     "open_url",
 		"eval-js":  "eval_js",
-		"eval":     "eval_js",
 	}[name]; ok {
 		return mapped
 	}
 	return strings.ReplaceAll(name, "-", "_")
+}
+
+// resolveSelector converts a target string (with strategy prefix) into a CSS query selector.
+// For the browser, css is the default strategy.
+func (d *Driver) resolveSelector(raw string) (string, error) {
+	t := action.ParseTarget(raw, action.StrategyCSS)
+	switch t.Strategy {
+	case action.StrategyCSS:
+		return t.Value, nil
+	case action.StrategyID:
+		return "#" + t.Value, nil
+	case action.StrategyXPath:
+		// chromedp ByQuery doesn't support xpath; return error for now
+		return "", fmt.Errorf("xpath strategy not yet supported for browser; use css: instead")
+	case action.StrategyText:
+		// Use a broad text-content selector via xpath would require BySearch
+		// For now, treat as :has-text pseudo (not standard CSS) — use XPath-like approach
+		return "", fmt.Errorf("text strategy not yet supported for browser click; use css: instead")
+	case action.StrategyAcc:
+		return fmt.Sprintf("[aria-label=%q]", t.Value), nil
+	case action.StrategyXY:
+		return "", fmt.Errorf("xy strategy not supported for browser; use css: or id: instead")
+	default:
+		return "", fmt.Errorf("unsupported target strategy %q for browser", t.Strategy)
+	}
 }
 
 func invalidParam(message string) action.Result {

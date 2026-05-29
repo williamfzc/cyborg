@@ -20,6 +20,12 @@ func (f *fakeDriver) Summary() coredriver.Summary {
 	return coredriver.Summary{Name: "fake", Kind: device.KindBrowser, Backend: "fake"}
 }
 
+func (f *fakeDriver) Actions() []coredriver.ActionSpec {
+	return []coredriver.ActionSpec{
+		{Name: "screenshot", Description: "Capture screenshot"},
+	}
+}
+
 func (f *fakeDriver) Create(_ context.Context, spec coredriver.CreateSpec) (device.Device, error) {
 	return device.Device{
 		ID:        device.NewID(spec.Kind),

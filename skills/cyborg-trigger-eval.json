@@ -1,0 +1,22 @@
+[
+  {"query": "用 cyborg 打开浏览器访问 google.com", "should_trigger": true},
+  {"query": "帮我在 Android 手机上点击登录按钮", "should_trigger": true},
+  {"query": "写个脚本自动测试 Android 应用的登录流程", "should_trigger": true},
+  {"query": "截个手机屏幕看看当前页面长什么样", "should_trigger": true},
+  {"query": "在浏览器里自动填表单并提交", "should_trigger": true},
+  {"query": "用设备跑一下这个端到端测试", "should_trigger": true},
+  {"query": "帮我装个 apk 到模拟器上", "should_trigger": true},
+  {"query": "打开一个 headless browser 做自动化测试", "should_trigger": true},
+  {"query": "在 Android 上执行 shell 命令查看进程", "should_trigger": true},
+  {"query": "控制手机滑动到页面底部", "should_trigger": true},
+  {"query": "测试这个函数的返回值是否正确", "should_trigger": false},
+  {"query": "在浏览器里打开开发者工具调试", "should_trigger": false},
+  {"query": "这个网站在手机上显示有布局问题", "should_trigger": false},
+  {"query": "写一个模拟点击事件的单元测试", "should_trigger": false},
+  {"query": "用 puppeteer 爬取这个网页的数据", "should_trigger": false},
+  {"query": "帮我配置 Android Studio 的模拟器", "should_trigger": false},
+  {"query": "检查设备是否连接到电脑", "should_trigger": false},
+  {"query": "生成测试覆盖率报告", "should_trigger": false},
+  {"query": "这个 React UI 组件需要测试", "should_trigger": false},
+  {"query": "修复移动端 CSS 适配问题", "should_trigger": false}
+]

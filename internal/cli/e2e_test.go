@@ -81,21 +81,21 @@ func TestE2E(t *testing.T) {
 		assertResultOK(t, stdout.Bytes())
 	})
 
-	t.Run("browser_open", func(t *testing.T) {
+	t.Run("do_open", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"browser", "open", "--url=https://example.com"}, &stdout, &stderr)
+		code := Execute([]string{"do", "open", "--url=https://example.com"}, &stdout, &stderr)
 		if code != 0 && code != 2 {
-			t.Fatalf("browser open failed (code=%d): stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+			t.Fatalf("open failed (code=%d): stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 		}
 		assertResultOK(t, stdout.Bytes())
 	})
 
-	t.Run("browser_eval", func(t *testing.T) {
+	t.Run("do_eval", func(t *testing.T) {
 		time.Sleep(500 * time.Millisecond) // let page load
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"browser", "eval", "--code=document.title"}, &stdout, &stderr)
+		code := Execute([]string{"do", "eval", "--code=document.title"}, &stdout, &stderr)
 		if code != 0 && code != 2 {
 			t.Fatalf("eval failed (code=%d): stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 		}
@@ -103,25 +103,25 @@ func TestE2E(t *testing.T) {
 		t.Logf("eval result: %v", result["result"])
 	})
 
-	t.Run("do_click_explicit_device", func(t *testing.T) {
+	t.Run("do_click_with_target", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"do", "click", "--device=" + dev.ID, "--selector=body"}, &stdout, &stderr)
+		code := Execute([]string{"do", "click", "--device=" + dev.ID, "--target=css:body"}, &stdout, &stderr)
 		if code != 0 && code != 2 {
 			t.Fatalf("click failed (code=%d): %s", code, stderr.String())
 		}
 		assertResultOK(t, stdout.Bytes())
 	})
 
-	t.Run("kind_mismatch_rejected", func(t *testing.T) {
+	t.Run("help_browser", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"android", "tree", "--device=" + dev.ID}, &stdout, &stderr)
-		if code == 0 {
-			t.Fatal("expected android command on browser device to fail")
+		code := Execute([]string{"help", "browser"}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("help browser failed (code=%d): %s", code, stderr.String())
 		}
-		if !strings.Contains(stderr.String(), "android") {
-			t.Logf("unexpected error: %s", stderr.String())
+		if !strings.Contains(stdout.String(), "click") {
+			t.Fatalf("expected help to list click action, got: %s", stdout.String())
 		}
 	})
 }
@@ -191,7 +191,7 @@ func TestE2E_Android(t *testing.T) {
 	t.Run("shell", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"android", "shell", "--device=" + dev.ID, "--cmd=getprop ro.build.version.sdk"}, &stdout, &stderr)
+		code := Execute([]string{"do", "shell", "--device=" + dev.ID, "--cmd=getprop ro.build.version.sdk"}, &stdout, &stderr)
 		if code != 0 && code != 2 {
 			t.Fatalf("shell failed (code=%d): %s", code, stderr.String())
 		}
@@ -207,7 +207,7 @@ func TestE2E_Android(t *testing.T) {
 	t.Run("tree", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"android", "tree", "--device=" + dev.ID}, &stdout, &stderr)
+		code := Execute([]string{"do", "tree", "--device=" + dev.ID}, &stdout, &stderr)
 		if code != 0 && code != 2 {
 			t.Fatalf("tree failed (code=%d): %s", code, stderr.String())
 		}
@@ -233,36 +233,33 @@ func TestE2E_Android(t *testing.T) {
 	t.Run("click_by_coordinate", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"do", "click", "--device=" + dev.ID, "--x=540", "--y=1200"}, &stdout, &stderr)
+		code := Execute([]string{"do", "click", "--device=" + dev.ID, "--target=xy:540,1200"}, &stdout, &stderr)
 		if code != 0 && code != 2 {
 			t.Fatalf("click failed (code=%d): %s", code, stderr.String())
 		}
 		assertResultOK(t, stdout.Bytes())
 	})
 
-	t.Run("click_by_selector", func(t *testing.T) {
+	t.Run("click_by_text", func(t *testing.T) {
 		// Go home first
 		Execute([]string{"do", "press", "--device=" + dev.ID, "--key=home"}, &bytes.Buffer{}, &bytes.Buffer{})
 		time.Sleep(1 * time.Second)
 
 		stdout.Reset()
 		stderr.Reset()
-		// Try clicking something visible on home screen
-		code := Execute([]string{"do", "click", "--device=" + dev.ID, "--selector=Chrome"}, &stdout, &stderr)
+		code := Execute([]string{"do", "click", "--device=" + dev.ID, "--target=text:Chrome"}, &stdout, &stderr)
 		if code == 0 || code == 2 {
-			// Selector found and clicked
 			result := assertResultOK(t, stdout.Bytes())
 			t.Logf("clicked: %v", result["result"])
 		} else {
-			// If Chrome isn't on home screen, that's fine
-			t.Logf("selector click returned code=%d (may not have the element): %s", code, stdout.String())
+			t.Logf("text click returned code=%d (may not have the element): %s", code, stdout.String())
 		}
 	})
 
 	t.Run("swipe", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"android", "swipe", "--device=" + dev.ID, "--from=540,1500", "--to=540,500"}, &stdout, &stderr)
+		code := Execute([]string{"do", "swipe", "--device=" + dev.ID, "--from=540,1500", "--to=540,500"}, &stdout, &stderr)
 		if code != 0 && code != 2 {
 			t.Fatalf("swipe failed (code=%d): %s", code, stderr.String())
 		}
@@ -279,15 +276,15 @@ func TestE2E_Android(t *testing.T) {
 		assertResultOK(t, stdout.Bytes())
 	})
 
-	t.Run("browser_kind_mismatch", func(t *testing.T) {
+	t.Run("help_android", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		code := Execute([]string{"browser", "open", "--device=" + dev.ID, "--url=https://example.com"}, &stdout, &stderr)
-		if code == 0 {
-			t.Fatal("expected browser command on android device to fail")
+		code := Execute([]string{"help", "android"}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("help android failed (code=%d): %s", code, stderr.String())
 		}
-		if !strings.Contains(stderr.String(), "browser") {
-			t.Logf("error: %s", stderr.String())
+		if !strings.Contains(stdout.String(), "shell") {
+			t.Fatalf("expected help to list shell action, got: %s", stdout.String())
 		}
 	})
 }
