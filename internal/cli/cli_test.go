@@ -4,9 +4,27 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	home, err := os.MkdirTemp("", "cyborg-cli-test-home-*")
+	if err != nil {
+		panic(err)
+	}
+	originalHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	if originalHome != "" {
+		_ = os.Setenv("HOME", originalHome)
+	}
+	_ = os.RemoveAll(home)
+	os.Exit(code)
+}
 
 func TestExecute_HelpFlags(t *testing.T) {
 	tests := []struct {
@@ -32,6 +50,29 @@ func TestExecute_HelpFlags(t *testing.T) {
 				t.Fatalf("expected no stderr output, got: %s", stderr.String())
 			}
 		})
+	}
+}
+
+func TestExecute_HelpListsSupportedDeviceKinds(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Execute([]string{"help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d", code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"Supported kinds: browser, android, ios",
+		"cyborg up browser --headless",
+		"cyborg do click --target=\"text:Login\" --device=android-abc123",
+		"cyborg up ios --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected help output to contain %q, got: %s", want, output)
+		}
 	}
 }
 

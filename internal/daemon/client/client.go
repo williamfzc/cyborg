@@ -27,7 +27,7 @@ func NewDefault() *Client {
 	return &Client{
 		baseURL: daemon.DefaultBaseURL(),
 		http: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 2 * time.Minute,
 		},
 	}
 }

@@ -35,9 +35,10 @@ Each driver implements `Actions() []ActionSpec`, letting the daemon serve action
 ## Current Drivers
 
 - `browser`: controls Chromium-compatible browsers through a daemon-owned session.
-- `android`: controls adb-attached real devices or emulators through the same action protocol.
+- `android`: creates or controls adb-managed Android emulator targets through the same action protocol.
+- `ios`: boots or controls iOS Simulators through `xcrun simctl`; UI actions can use WebDriverAgent when a `--wda-url` is provided at creation time.
 
-New drivers (Docker, iOS, remote VM) plug in by implementing the `Driver` interface and registering in the daemon. Zero CLI code changes required.
+New drivers (Docker, remote VM) plug in by implementing the `Driver` interface and registering in the daemon. Zero CLI code changes required.
 
 ## Source Links
 

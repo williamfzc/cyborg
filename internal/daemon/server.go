@@ -15,6 +15,7 @@ import (
 	"github.com/williamfzc/cyborg/internal/core/session"
 	androiddriver "github.com/williamfzc/cyborg/internal/driver/android/emulator"
 	browserdriver "github.com/williamfzc/cyborg/internal/driver/browser/playwright"
+	iosdriver "github.com/williamfzc/cyborg/internal/driver/ios/simulator"
 	"github.com/williamfzc/cyborg/internal/store/localstate"
 )
 
@@ -40,6 +41,7 @@ func NewDefaultServer() (*Server, error) {
 		registry: coredriver.NewRegistry(
 			browserdriver.New(store),
 			androiddriver.New(store),
+			iosdriver.New(store),
 		),
 	}
 	if err := srv.reconcileState(); err != nil {
@@ -56,7 +58,8 @@ func (s *Server) Status() Status {
 		Notes: []string{
 			"daemon starts on demand and exposes a local device control plane over HTTP",
 			"browser devices keep live sessions inside the daemon for repeated agent actions",
-			"android devices are controlled through adb with the same action protocol",
+			"android emulator targets are created or controlled through adb with the same action protocol",
+			"ios simulators are booted or controlled through simctl, with optional WebDriverAgent for UI actions",
 		},
 	}
 }

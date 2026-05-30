@@ -1,18 +1,18 @@
 ---
 name: cyborg
 description: |
-  Provision on-demand VMs and emulated devices (browsers, Android emulators) for AI agents.
-  Cyborg creates ephemeral, isolated environments — spin up when needed, destroy when done.
-  Use when the user needs: a browser/emulator for an agent, isolated test environment, UI automation on emulator.
+  Provision on-demand virtual devices (browsers, Android emulators, iOS simulators) for AI agents.
+  Cyborg creates ephemeral, controllable environments — spin up when needed, destroy when done.
+  Use when the user needs: a browser/emulator/simulator for an agent, isolated UI automation environment.
   Trigger phrases: "spin up browser", "create device", "browser automation", "run in VM", "test on emulator",
   "on-demand device", "ephemeral environment", "cyborg", "拉起浏览器", "创建设备", "浏览器自动化",
-  "在模拟器上测试", "设备自动化", "手机操作", "Android 自动化", "给 agent 一个设备".
-  NOT for: puppeteer/playwright (different tools), unit tests, CSS fixes, real device debugging.
+  "在模拟器上测试", "设备自动化", "模拟器操作", "Android 自动化", "给 agent 一个设备".
+  NOT for: puppeteer/playwright (different tools), unit tests, CSS fixes, hardware debugging.
 ---
 
 # Cyborg Skill — Device Provisioning for Agents
 
-You can spin up on-demand virtual machines and emulated devices (browsers, Android emulators) for AI agents.
+You can spin up on-demand virtual devices (browsers, Android emulators, iOS simulators) for AI agents.
 All commands are stateless. The daemon manages device lifecycle automatically — create when needed, destroy when done.
 
 ## Core Workflow
@@ -23,7 +23,10 @@ cyborg ls
 
 # 2. If no suitable device exists, create one
 cyborg up browser --headless
-cyborg up android --serial=emulator-5554
+cyborg up android                         # auto-starts an Android emulator when available
+cyborg up android --avd=<avd-name>        # pick a specific Android emulator profile
+cyborg up ios                             # auto-boots an available iOS simulator
+cyborg up ios --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100
 
 # 3. Execute actions (--device omitted when only one device exists)
 cyborg do <action> [--device=<id>] [flags]
@@ -71,6 +74,8 @@ cyborg do eval --code="document.title"
 ## Android Actions
 
 ```bash
+cyborg up android                         # auto-select an existing target or emulator profile
+cyborg up android --avd=<avd-name>        # start a specific emulator profile
 cyborg do click --target="text:Settings"
 cyborg do click --target="xy:540,1200"
 cyborg do type --text="hello world"
@@ -82,6 +87,28 @@ cyborg do shell --cmd="am start -n com.app/.MainActivity"   # launch app
 cyborg do shell --cmd="pm list packages"
 cyborg do install --apk=/path/to/app.apk
 ```
+
+## iOS Actions
+
+```bash
+cyborg up ios                                         # auto-boot an available simulator
+cyborg up ios --udid=<simulator-udid>                 # boot or attach a specific simulator
+cyborg up ios --wda-url=http://127.0.0.1:8100         # enable UI actions through WebDriverAgent
+cyborg do screenshot
+cyborg do install --app=/path/to/App.app
+cyborg do launch --bundle-id=com.example.app
+cyborg do terminate --bundle-id=com.example.app
+cyborg do click --target="text:Settings"
+cyborg do click --target="acc:Login"
+cyborg do click --target="xy:120,300"
+cyborg do type --text="hello world"
+cyborg do press --key=home
+cyborg do swipe --from=200,700 --to=200,200
+cyborg do tree                              # dump UI hierarchy XML through WDA
+```
+
+For iOS, `screenshot`, `install`, `launch`, and `terminate` use the simulator directly.
+Element actions (`click`, `type`, `press`, `swipe`, `tree`) require WebDriverAgent.
 
 ## Decision Logic
 
@@ -99,3 +126,4 @@ Before every action:
 - `screenshot` after important actions to verify the result visually.
 - If an action returns `ok=false`, read the error message — don't retry blindly.
 - `tree` (android) gives you the full UI structure — use it to find valid targets before clicking.
+- `tree` (ios) requires WebDriverAgent and gives you the native UI structure.

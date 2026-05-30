@@ -356,7 +356,7 @@ Discovery:
   cyborg help <kind>                Show actions for a device kind
   cyborg version                    Print version
 
-Supported kinds: browser, android (more via drivers)
+Supported kinds: browser, android, ios (more via drivers)
 
 Targeting elements (--target flag):
   css:<selector>                    CSS selector (browser default)
@@ -371,6 +371,7 @@ Examples:
   cyborg do click --target="css:button.submit"
   cyborg do screenshot
   cyborg do click --target="text:Login" --device=android-abc123
+  cyborg up ios --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100
 
 If only one device exists, --device can be omitted.
 

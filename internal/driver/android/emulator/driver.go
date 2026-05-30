@@ -1,5 +1,5 @@
 // Android adb driver for Cyborg.
-// It maps generic actions onto real devices or emulators attached through adb.
+// It maps generic actions onto adb-managed Android emulator targets.
 package emulator
 
 import (
@@ -24,6 +24,7 @@ import (
 type liveSession struct {
 	serial      string
 	artifactDir string
+	owned       bool
 }
 
 type Driver struct {
@@ -49,8 +50,8 @@ func (d *Driver) Summary() coredriver.Summary {
 			"tree", "shell", "install", "swipe",
 		},
 		Notes: []string{
-			"Connects to adb-attached devices (real or emulator)",
-			"Use --serial to specify a device, or auto-detects if only one is connected",
+			"Creates or connects to adb-managed Android emulator targets",
+			"Use --serial to specify a target, --avd to pick an emulator profile, or auto-selects one",
 			"target strategies: text (default), id, acc, xy",
 		},
 	}
@@ -112,10 +113,17 @@ func (d *Driver) Create(ctx context.Context, spec coredriver.CreateSpec) (device
 	}
 
 	serial := stringOption(spec.Options, "serial")
+	owned := false
 	if serial == "" {
 		serial, err = autoDetectDevice(ctx, adbPath)
 		if err != nil {
-			return device.Device{}, err
+			if !strings.Contains(err.Error(), "no adb devices connected") {
+				return device.Device{}, err
+			}
+			serial, owned, err = launchAndroidEmulator(ctx, adbPath, spec.Options)
+			if err != nil {
+				return device.Device{}, err
+			}
 		}
 	}
 
@@ -159,6 +167,7 @@ func (d *Driver) Create(ctx context.Context, spec coredriver.CreateSpec) (device
 			"android_version": strings.TrimSpace(android),
 			"artifact_dir":    artifactDir,
 			"adb_path":        adbPath,
+			"owned":           owned,
 		},
 	}
 
@@ -166,6 +175,7 @@ func (d *Driver) Create(ctx context.Context, spec coredriver.CreateSpec) (device
 	d.sessions[dev.ID] = &liveSession{
 		serial:      serial,
 		artifactDir: artifactDir,
+		owned:       owned,
 	}
 	d.mu.Unlock()
 
@@ -188,6 +198,27 @@ func (d *Driver) Destroy(_ context.Context, dev device.Device) error {
 	}
 	if artifactDir != "" {
 		_ = os.RemoveAll(artifactDir)
+	}
+	owned := false
+	if session != nil {
+		owned = session.owned
+	} else if value, ok := dev.Metadata["owned"].(bool); ok {
+		owned = value
+	}
+	serial := ""
+	if session != nil {
+		serial = session.serial
+	} else if value, ok := dev.Metadata["serial"].(string); ok {
+		serial = value
+	}
+	adbPath, _ := dev.Metadata["adb_path"].(string)
+	if owned && serial != "" {
+		if adbPath == "" {
+			adbPath, _ = findADB()
+		}
+		if adbPath != "" {
+			_, _ = adbCmd(context.Background(), adbPath, serial, "emu", "kill")
+		}
 	}
 	return nil
 }
@@ -554,21 +585,9 @@ func findADB() (string, error) {
 }
 
 func autoDetectDevice(ctx context.Context, adbPath string) (string, error) {
-	cmd := exec.CommandContext(ctx, adbPath, "devices")
-	out, err := cmd.Output()
+	serials, err := listOnlineDevices(ctx, adbPath)
 	if err != nil {
-		return "", fmt.Errorf("adb devices: %w", err)
-	}
-	var serials []string
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "List") || strings.HasPrefix(line, "*") {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) >= 2 && parts[1] == "device" {
-			serials = append(serials, parts[0])
-		}
+		return "", err
 	}
 	switch len(serials) {
 	case 0:
@@ -578,6 +597,140 @@ func autoDetectDevice(ctx context.Context, adbPath string) (string, error) {
 	default:
 		return "", fmt.Errorf("multiple adb devices connected (%s); specify --serial=<serial>", strings.Join(serials, ", "))
 	}
+}
+
+func listOnlineDevices(ctx context.Context, adbPath string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, adbPath, "devices")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("adb devices: %w", err)
+	}
+	return parseADBDevices(string(out)), nil
+}
+
+func parseADBDevices(raw string) []string {
+	var serials []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "List") || strings.HasPrefix(line, "*") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) >= 2 && parts[1] == "device" {
+			serials = append(serials, parts[0])
+		}
+	}
+	return serials
+}
+
+func launchAndroidEmulator(ctx context.Context, adbPath string, options map[string]any) (string, bool, error) {
+	emulatorPath, err := findEmulatorExecutable()
+	if err != nil {
+		return "", false, fmt.Errorf("no adb devices connected and Android emulator runtime is unavailable: %w", err)
+	}
+	avd := stringOption(options, "avd")
+	if avd == "" {
+		avd, err = autoSelectAVD(ctx, emulatorPath)
+		if err != nil {
+			return "", false, err
+		}
+	}
+	before, _ := listOnlineDevices(ctx, adbPath)
+	cmd := exec.Command(emulatorPath, "-avd", avd, "-no-snapshot-save")
+	if err := cmd.Start(); err != nil {
+		return "", false, fmt.Errorf("start Android emulator %q: %w", avd, err)
+	}
+	serial, err := waitForEmulator(ctx, adbPath, before)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		return "", false, err
+	}
+	return serial, true, nil
+}
+
+func findEmulatorExecutable() (string, error) {
+	if p, err := exec.LookPath("emulator"); err == nil {
+		return p, nil
+	}
+	var candidates []string
+	if home := os.Getenv("ANDROID_HOME"); home != "" {
+		candidates = append(candidates, filepath.Join(home, "emulator", "emulator"))
+	}
+	if home := os.Getenv("ANDROID_SDK_ROOT"); home != "" {
+		candidates = append(candidates, filepath.Join(home, "emulator", "emulator"))
+	}
+	if home := os.Getenv("HOME"); home != "" {
+		candidates = append(candidates, filepath.Join(home, "Library", "Android", "sdk", "emulator", "emulator"))
+	}
+	candidates = append(candidates, "/opt/homebrew/bin/emulator", "/usr/local/bin/emulator")
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("emulator binary not found; install Android SDK emulator or set ANDROID_HOME")
+}
+
+func autoSelectAVD(ctx context.Context, emulatorPath string) (string, error) {
+	cmd := exec.CommandContext(ctx, emulatorPath, "-list-avds")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("list Android virtual devices: %w", err)
+	}
+	avds := parseAVDList(string(out))
+	if len(avds) == 0 {
+		return "", fmt.Errorf("no Android virtual devices found; create one with Android Studio or pass --avd=<name>")
+	}
+	return avds[0], nil
+}
+
+func parseAVDList(raw string) []string {
+	var avds []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			avds = append(avds, line)
+		}
+	}
+	return avds
+}
+
+func waitForEmulator(ctx context.Context, adbPath string, before []string) (string, error) {
+	beforeSet := map[string]bool{}
+	for _, serial := range before {
+		beforeSet[serial] = true
+	}
+	deadlineCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadlineCtx.Done():
+			return "", fmt.Errorf("Android emulator did not become ready before timeout")
+		case <-ticker.C:
+			serials, err := listOnlineDevices(deadlineCtx, adbPath)
+			if err != nil {
+				continue
+			}
+			for _, serial := range serials {
+				if beforeSet[serial] {
+					continue
+				}
+				if isAndroidBootComplete(deadlineCtx, adbPath, serial) {
+					return serial, nil
+				}
+			}
+			if len(beforeSet) == 0 && len(serials) == 1 && isAndroidBootComplete(deadlineCtx, adbPath, serials[0]) {
+				return serials[0], nil
+			}
+		}
+	}
+}
+
+func isAndroidBootComplete(ctx context.Context, adbPath, serial string) bool {
+	out, err := adbShell(ctx, adbPath, serial, "getprop", "sys.boot_completed")
+	return err == nil && strings.TrimSpace(out) == "1"
 }
 
 func adbCmd(ctx context.Context, adbPath, serial string, args ...string) (string, error) {
