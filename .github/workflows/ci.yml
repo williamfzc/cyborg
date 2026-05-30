@@ -40,11 +40,3 @@ jobs:
 
       - name: Build CLI
         run: go build -trimpath -o /tmp/cyborg ./cmd/cyborg
-
-      - name: Build release targets
-        run: |
-          tmp="$(mktemp -d)"
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            GOOS="${target%/*}" GOARCH="${target#*/}" CGO_ENABLED=0 \
-              go build -trimpath -o "$tmp/cyborg-${GOOS}-${GOARCH}" ./cmd/cyborg
-          done

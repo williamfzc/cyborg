@@ -42,7 +42,7 @@ New drivers (Docker, remote VM) plug in by implementing the `Driver` interface a
 
 ## Automation
 
-GitHub CI runs formatting, tests, and cross-platform CLI builds on pushes and pull requests. Tagged releases publish packaged CLI binaries for Linux, macOS, and Windows.
+GitHub CI runs formatting, tests, and a local CLI build on pushes and pull requests. Tagged releases build and publish packaged CLI binaries for Linux, macOS, and Windows.
 
 ## Source Links
 
