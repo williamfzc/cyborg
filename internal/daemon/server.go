@@ -5,6 +5,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ type Server struct {
 type Status struct {
 	Version  string               `json:"version"`
 	Protocol string               `json:"protocol"`
+	PID      int                  `json:"pid"`
 	Drivers  []coredriver.Summary `json:"drivers"`
 	Notes    []string             `json:"notes"`
 }
@@ -54,6 +56,7 @@ func (s *Server) Status() Status {
 	return Status{
 		Version:  buildinfo.Version,
 		Protocol: "localhost-http",
+		PID:      os.Getpid(),
 		Drivers:  s.registry.Summaries(),
 		Notes: []string{
 			"daemon starts on demand and exposes a local device control plane over HTTP",

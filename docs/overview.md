@@ -40,9 +40,15 @@ Each driver implements `Actions() []ActionSpec`, letting the daemon serve action
 
 New drivers (Docker, remote VM) plug in by implementing the `Driver` interface and registering in the daemon. Zero CLI code changes required.
 
+## Automation
+
+GitHub CI runs formatting, tests, and cross-platform CLI builds on pushes and pull requests. Tagged releases publish packaged CLI binaries for Linux, macOS, and Windows.
+
 ## Source Links
 
 - [[../AGENTS|Repository rules]]
+- [CI workflow](../.github/workflows/ci.yml)
+- [Release workflow](../.github/workflows/release.yml)
 - [CLI implementation](../internal/cli/cli.go)
 - [Driver interface](../internal/core/driver/driver.go)
 - [Daemon implementation](../internal/daemon/server.go)

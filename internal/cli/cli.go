@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/williamfzc/cyborg/internal/buildinfo"
@@ -256,8 +254,7 @@ func ensureDaemon(client *daemonclient.Client) error {
 		if status.Version == version {
 			return nil
 		}
-		_ = stopManagedDaemon()
-		_ = stopListenerOnDefaultPort()
+		_ = stopManagedDaemon(status.PID)
 	}
 
 	baseDir, err := daemon.BaseDir()
@@ -275,18 +272,10 @@ func ensureDaemon(client *daemonclient.Client) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(os.Args[0], "daemon", "serve")
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
+	if err := startManagedDaemon(logFile); err != nil {
 		_ = logFile.Close()
 		return err
 	}
-	go func() {
-		_ = cmd.Wait()
-		_ = logFile.Close()
-	}()
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -299,47 +288,6 @@ func ensureDaemon(client *daemonclient.Client) error {
 		time.Sleep(250 * time.Millisecond)
 	}
 	return fmt.Errorf("daemon did not become healthy at %s", daemon.DefaultBaseURL())
-}
-
-func stopManagedDaemon() error {
-	pidPath, err := daemon.PIDFilePath()
-	if err != nil {
-		return err
-	}
-	content, err := os.ReadFile(pidPath)
-	if err != nil {
-		return nil
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
-	if err != nil {
-		return nil
-	}
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-		return err
-	}
-	time.Sleep(300 * time.Millisecond)
-	_ = os.Remove(pidPath)
-	return nil
-}
-
-func stopListenerOnDefaultPort() error {
-	cmd := exec.Command("lsof", "-ti", "tcp:58583")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(line))
-		if err != nil {
-			continue
-		}
-		_ = syscall.Kill(pid, syscall.SIGTERM)
-	}
-	time.Sleep(300 * time.Millisecond)
-	return nil
 }
 
 func printHelp(w io.Writer) {

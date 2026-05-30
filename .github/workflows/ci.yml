@@ -1,0 +1,50 @@
+# CI verifies the repository on every proposed change.
+# It keeps the public CLI buildable and the test suite green.
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "$out"
+            exit 1
+          fi
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build CLI
+        run: go build -trimpath -o /tmp/cyborg ./cmd/cyborg
+
+      - name: Build release targets
+        run: |
+          tmp="$(mktemp -d)"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" CGO_ENABLED=0 \
+              go build -trimpath -o "$tmp/cyborg-${GOOS}-${GOARCH}" ./cmd/cyborg
+          done
