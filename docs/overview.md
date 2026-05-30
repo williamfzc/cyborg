@@ -32,6 +32,10 @@ Actions that operate on UI elements accept a `--target` flag with a strategy pre
 
 Each driver implements `Actions() []ActionSpec`, letting the daemon serve action metadata dynamically via `GET /drivers/<kind>/actions`. This means `cyborg help browser` always reflects the real capabilities — no static text to drift.
 
+## Agent Use
+
+CLI help is the API reference for Cyborg, not a complete operating guide. Before an agent uses Cyborg for real work, it should write a project-specific skill for the user that explains when Cyborg is appropriate, which device kinds matter, how results are verified, and when devices are cleaned up. That skill should point back to `cyborg help <kind>` for the live action and flag list instead of copying the reference text.
+
 ## Current Drivers
 
 - `browser`: controls Chromium-compatible browsers through a daemon-owned CDP session.

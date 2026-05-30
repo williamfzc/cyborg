@@ -73,6 +73,9 @@ func TestExecute_HelpListsSupportedDeviceKinds(t *testing.T) {
 	output := stdout.String()
 	for _, want := range []string{
 		"Supported kinds: browser, android, ios",
+		"Treat this help as the CLI reference, not as a complete operating guide.",
+		"Before real work, write a project-specific skill for the user.",
+		"When using a device kind, run cyborg help <kind> first.",
 		"cyborg up browser --headless",
 		"cyborg do click --target=\"text:Login\" --device=android-abc123",
 		"cyborg up ios --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100",

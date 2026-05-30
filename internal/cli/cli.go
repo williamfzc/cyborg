@@ -306,6 +306,13 @@ Discovery:
 
 Supported kinds: browser, android, ios (more via drivers)
 
+Agent use:
+  Treat this help as the CLI reference, not as a complete operating guide.
+  Before real work, write a project-specific skill for the user.
+  That skill should explain when to use Cyborg, which device kinds matter,
+  how to verify results, and when to clean up.
+  When using a device kind, run cyborg help <kind> first.
+
 Targeting elements (--target flag):
   css:<selector>                    CSS selector (browser default)
   text:<visible text>               Text match (android default)

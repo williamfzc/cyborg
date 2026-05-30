@@ -71,6 +71,8 @@ cyborg rm <device-id>
 
 Use `cyborg help <kind>` to ask the daemon for the real action list of a device kind. This keeps help output tied to the registered driver instead of duplicating capability tables in the README.
 
+For agent use, treat CLI help as the API reference, not the whole operating guide. Before using Cyborg for real work, write a project-specific skill for the user that explains when to use Cyborg, which device kinds matter, how to verify results, and when to clean up. When using a device kind, run `cyborg help <kind>` first so the skill and the agent follow the current driver surface instead of memory.
+
 ## Documentation Map
 
 - [Docs index](docs/index.md): the entry point for the Obsidian-style project docs.
