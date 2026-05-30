@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +23,13 @@ import (
 	"github.com/williamfzc/cyborg/internal/core/device"
 	coredriver "github.com/williamfzc/cyborg/internal/core/driver"
 	"github.com/williamfzc/cyborg/internal/store/localstate"
+)
+
+const defaultWDAURL = "http://127.0.0.1:8100"
+
+var (
+	baseCapabilities = []string{"screenshot", "install", "launch", "terminate"}
+	uiCapabilities   = []string{"click", "type", "press", "swipe", "tree"}
 )
 
 type liveSession struct {
@@ -56,7 +65,7 @@ func (d *Driver) Summary() coredriver.Summary {
 		Notes: []string{
 			"Creates or connects to an iOS Simulator via xcrun simctl",
 			"Use --udid to specify a simulator, or auto-selects an available simulator",
-			"UI actions require WebDriverAgent; pass --wda-url=http://127.0.0.1:8100 when creating the device",
+			"UI actions use WebDriverAgent at http://127.0.0.1:8100 by default; pass --wda-url to override",
 			"target strategies: text (default), id, acc, xy",
 		},
 	}
@@ -142,25 +151,29 @@ func (d *Driver) Create(ctx context.Context, spec coredriver.CreateSpec) (device
 		return device.Device{}, fmt.Errorf("create artifact dir: %w", err)
 	}
 
-	wdaURL := strings.TrimRight(stringOption(spec.Options, "wda_url"), "/")
+	wdaURL, err := normalizeWDAURL(stringOption(spec.Options, "wda_url"))
+	if err != nil {
+		return device.Device{}, err
+	}
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	wdaAvailable, wdaStatus := probeWDA(ctx, httpClient, wdaURL)
 	dev := device.Device{
-		ID:    device.NewID(device.KindIOS),
-		Kind:  device.KindIOS,
-		State: device.StateRunning,
-		Capabilities: []string{
-			"screenshot", "install", "launch", "terminate",
-			"click", "type", "press", "swipe", "tree",
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:           device.NewID(device.KindIOS),
+		Kind:         device.KindIOS,
+		State:        device.StateRunning,
+		Capabilities: iosCapabilities(),
+		CreatedAt:    now,
+		UpdatedAt:    now,
 		Metadata: map[string]any{
-			"driver":       "ios-simulator",
-			"backend":      "ios/simctl+wda",
-			"udid":         udid,
-			"xcrun_path":   xcrunPath,
-			"artifact_dir": artifactDir,
-			"wda_url":      wdaURL,
-			"owned":        owned,
+			"driver":        "ios-simulator",
+			"backend":       "ios/simctl+wda",
+			"udid":          udid,
+			"xcrun_path":    xcrunPath,
+			"artifact_dir":  artifactDir,
+			"wda_url":       wdaURL,
+			"wda_available": wdaAvailable,
+			"wda_status":    wdaStatus,
+			"owned":         owned,
 		},
 	}
 
@@ -170,7 +183,7 @@ func (d *Driver) Create(ctx context.Context, spec coredriver.CreateSpec) (device
 		artifactDir: artifactDir,
 		wdaURL:      wdaURL,
 		owned:       owned,
-		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		httpClient:  httpClient,
 	}
 	d.mu.Unlock()
 
@@ -192,7 +205,7 @@ func (d *Driver) Destroy(_ context.Context, dev device.Device) error {
 		artifactDir = dir
 	}
 	if artifactDir != "" {
-		_ = os.RemoveAll(artifactDir)
+		d.removeArtifactDir(artifactDir)
 	}
 	owned := false
 	if session != nil {
@@ -587,9 +600,84 @@ func simctl(ctx context.Context, xcrunPath string, args ...string) (string, erro
 	return string(out), nil
 }
 
+func normalizeWDAURL(raw string) (string, error) {
+	wdaURL := strings.TrimSpace(raw)
+	if wdaURL == "" {
+		wdaURL = defaultWDAURL
+	}
+	wdaURL = strings.TrimRight(wdaURL, "/")
+	parsed, err := url.Parse(wdaURL)
+	if err != nil {
+		return "", fmt.Errorf("parse WDA URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("WDA URL must use http or https")
+	}
+	if !isLoopbackHost(parsed.Hostname()) {
+		return "", fmt.Errorf("WDA URL must point to localhost or a loopback address")
+	}
+	return wdaURL, nil
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func iosCapabilities() []string {
+	capabilities := append([]string{}, baseCapabilities...)
+	return append(capabilities, uiCapabilities...)
+}
+
+func probeWDA(ctx context.Context, client *http.Client, wdaURL string) (bool, string) {
+	normalizedURL, err := normalizeWDAURL(wdaURL)
+	if err != nil {
+		return false, err.Error()
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, normalizedURL+"/status", nil)
+	if err != nil {
+		return false, err.Error()
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err.Error()
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return false, fmt.Sprintf("status endpoint returned HTTP %d", resp.StatusCode)
+	}
+	return true, "reachable"
+}
+
+func (d *Driver) removeArtifactDir(path string) {
+	if d.store == nil || path == "" {
+		return
+	}
+	root, err := filepath.Abs(d.store.ArtifactsDir())
+	if err != nil {
+		return
+	}
+	target, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return
+	}
+	_ = os.RemoveAll(target)
+}
+
 func requireWDA(session *liveSession) error {
 	if session.wdaURL == "" {
-		return fmt.Errorf("WebDriverAgent URL is required for UI actions; recreate with 'cyborg up ios --wda-url=http://127.0.0.1:8100'")
+		return fmt.Errorf("WebDriverAgent is required for iOS UI actions; expected %s or recreate with --wda-url=<url>", defaultWDAURL)
 	}
 	return nil
 }

@@ -3,7 +3,11 @@
 package simulator
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/williamfzc/cyborg/internal/core/action"
 	"github.com/williamfzc/cyborg/internal/core/device"
@@ -21,6 +25,59 @@ func TestSummaryDescribesIOSDriver(t *testing.T) {
 	}
 	if len(summary.Capabilities) == 0 {
 		t.Fatal("expected capabilities to be listed")
+	}
+}
+
+func TestNormalizeWDAURLDefaultsToLocalAgent(t *testing.T) {
+	got, err := normalizeWDAURL("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != defaultWDAURL {
+		t.Fatalf("expected default WDA URL %q, got %q", defaultWDAURL, got)
+	}
+	got, err = normalizeWDAURL("http://localhost:8100/")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "http://localhost:8100" {
+		t.Fatalf("expected trailing slash to be trimmed, got %q", got)
+	}
+}
+
+func TestNormalizeWDAURLRejectsNonLoopbackHosts(t *testing.T) {
+	if _, err := normalizeWDAURL("http://example.com:8100"); err == nil {
+		t.Fatal("expected non-loopback WDA URL to be rejected")
+	}
+}
+
+func TestIOSCapabilitiesIncludeDefaultUICapabilities(t *testing.T) {
+	capabilities := iosCapabilities()
+	for _, want := range []string{"screenshot", "tree", "click"} {
+		if !contains(capabilities, want) {
+			t.Fatalf("expected capability %q in %v", want, capabilities)
+		}
+	}
+}
+
+func TestProbeWDA(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/status" {
+			t.Fatalf("expected /status probe, got %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"value":{"ready":true}}`))
+	}))
+	defer server.Close()
+
+	ok, status := probeWDA(context.Background(), server.Client(), server.URL)
+	if !ok || status != "reachable" {
+		t.Fatalf("expected reachable WDA, got ok=%v status=%q", ok, status)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Millisecond}
+	ok, status = probeWDA(context.Background(), client, "http://127.0.0.1:1")
+	if ok || status == "" {
+		t.Fatalf("expected unavailable WDA with status reason, got ok=%v status=%q", ok, status)
 	}
 }
 
@@ -102,4 +159,13 @@ func TestParseAvailableSimulators(t *testing.T) {
 	if len(got) != 1 || got[0].UDID != "C" {
 		t.Fatalf("expected selected simulator C, got: %+v", got)
 	}
+}
+
+func contains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }

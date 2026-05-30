@@ -25,8 +25,9 @@ cyborg ls
 cyborg up browser --headless
 cyborg up android                         # auto-starts an Android emulator when available
 cyborg up android --avd=<avd-name>        # pick a specific Android emulator profile
-cyborg up ios                             # auto-boots an available iOS simulator
-cyborg up ios --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100
+cyborg up ios                             # auto-boots an available iOS simulator; uses local WDA by default
+cyborg up ios --udid=<simulator-udid>     # pick a specific iOS simulator
+cyborg up ios --wda-url=http://127.0.0.1:8100  # override the WDA endpoint
 
 # 3. Execute actions (--device omitted when only one device exists)
 cyborg do <action> [--device=<id>] [flags]
@@ -93,7 +94,7 @@ cyborg do install --apk=/path/to/app.apk
 ```bash
 cyborg up ios                                         # auto-boot an available simulator
 cyborg up ios --udid=<simulator-udid>                 # boot or attach a specific simulator
-cyborg up ios --wda-url=http://127.0.0.1:8100         # enable UI actions through WebDriverAgent
+cyborg up ios --wda-url=http://127.0.0.1:8100         # override the default WebDriverAgent endpoint
 cyborg do screenshot
 cyborg do install --app=/path/to/App.app
 cyborg do launch --bundle-id=com.example.app
@@ -108,7 +109,7 @@ cyborg do tree                              # dump UI hierarchy XML through WDA
 ```
 
 For iOS, `screenshot`, `install`, `launch`, and `terminate` use the simulator directly.
-Element actions (`click`, `type`, `press`, `swipe`, `tree`) require WebDriverAgent.
+Element actions (`click`, `type`, `press`, `swipe`, `tree`) use WebDriverAgent at `http://127.0.0.1:8100` by default.
 
 ## Decision Logic
 
@@ -126,4 +127,4 @@ Before every action:
 - `screenshot` after important actions to verify the result visually.
 - If an action returns `ok=false`, read the error message — don't retry blindly.
 - `tree` (android) gives you the full UI structure — use it to find valid targets before clicking.
-- `tree` (ios) requires WebDriverAgent and gives you the native UI structure.
+- `tree` (ios) uses WebDriverAgent and gives you the native UI structure.

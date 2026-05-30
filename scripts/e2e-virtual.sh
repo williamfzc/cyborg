@@ -319,9 +319,15 @@ summary() {
   printf 'Passed: %d\n' "${#PASSED[@]}"
   printf 'Skipped: %d\n' "${#SKIPPED[@]}"
   printf 'Failed: %d\n' "${#FAILED[@]}"
-  for item in "${PASSED[@]}"; do printf '  PASS %s\n' "$item"; done
-  for item in "${SKIPPED[@]}"; do printf '  SKIP %s\n' "$item"; done
-  for item in "${FAILED[@]}"; do printf '  FAIL %s\n' "$item"; done
+  if ((${#PASSED[@]} > 0)); then
+    for item in "${PASSED[@]}"; do printf '  PASS %s\n' "$item"; done
+  fi
+  if ((${#SKIPPED[@]} > 0)); then
+    for item in "${SKIPPED[@]}"; do printf '  SKIP %s\n' "$item"; done
+  fi
+  if ((${#FAILED[@]} > 0)); then
+    for item in "${FAILED[@]}"; do printf '  FAIL %s\n' "$item"; done
+  fi
 
   if ((${#FAILED[@]} > 0)); then
     return 1

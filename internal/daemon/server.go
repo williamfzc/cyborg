@@ -59,7 +59,7 @@ func (s *Server) Status() Status {
 			"daemon starts on demand and exposes a local device control plane over HTTP",
 			"browser devices keep live sessions inside the daemon for repeated agent actions",
 			"android emulator targets are created or controlled through adb with the same action protocol",
-			"ios simulators are booted or controlled through simctl, with optional WebDriverAgent for UI actions",
+			"ios simulators use simctl for lifecycle actions and WebDriverAgent as the default UI automation bridge",
 		},
 	}
 }
