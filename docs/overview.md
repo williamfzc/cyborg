@@ -42,11 +42,12 @@ New drivers (Docker, remote VM) plug in by implementing the `Driver` interface a
 
 ## Automation
 
-GitHub CI runs formatting, tests, and a local CLI build on pushes and pull requests. Tagged releases build and publish packaged CLI binaries for Linux, macOS, and Windows.
+GitHub CI runs formatting, tests, and a local CLI build on pushes and pull requests. Tagged releases build and publish packaged CLI binaries for Linux, macOS, and Windows. The root `install.sh` script installs the latest macOS or Linux release into a local bin directory.
 
 ## Source Links
 
 - [[../AGENTS|Repository rules]]
+- [Installer](../install.sh)
 - [CI workflow](../.github/workflows/ci.yml)
 - [Release workflow](../.github/workflows/release.yml)
 - [CLI implementation](../internal/cli/cli.go)

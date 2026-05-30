@@ -23,6 +23,33 @@ Cyborg's competitive point is not any single backend. It is the common surface a
 
 The current driver list and behavior notes live in [Current Drivers](docs/overview.md#current-drivers).
 
+## Install
+
+For macOS and Linux, install the latest release with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/williamfzc/cyborg/main/install.sh | sh
+```
+
+The installer places `cyborg` in `~/.local/bin`. Add that directory to your `PATH` if your shell does not already load it.
+
+### Agent Install
+
+When installing Cyborg for a user, agents should avoid prompts and system-wide writes:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+curl -fsSL https://raw.githubusercontent.com/williamfzc/cyborg/main/install.sh | CYBORG_INSTALL_DIR="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
+cyborg version
+```
+
+If the user asks for a specific version, set `CYBORG_INSTALL_TAG`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/williamfzc/cyborg/main/install.sh | CYBORG_INSTALL_TAG=v0.1.1 sh
+```
+
 ## Install From Source
 
 ```bash
