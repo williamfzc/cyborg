@@ -162,26 +162,49 @@ run_browser_e2e() {
   fi
 }
 
+android_emulator_bin() {
+  if command -v emulator >/dev/null 2>&1; then
+    command -v emulator
+    return 0
+  fi
+  for candidate in \
+    "${ANDROID_HOME:-}/emulator/emulator" \
+    "${ANDROID_SDK_ROOT:-}/emulator/emulator" \
+    "$HOME/Library/Android/sdk/emulator/emulator" \
+    "/opt/homebrew/share/android-commandlinetools/emulator/emulator" \
+    "/usr/local/share/android-commandlinetools/emulator/emulator" \
+    "/opt/homebrew/share/android-sdk/emulator/emulator" \
+    "/usr/local/share/android-sdk/emulator/emulator"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 boot_android_emulator() {
   if adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ && $2 == "device" { print $1; exit 0 }' | grep -q .; then
     adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ && $2 == "device" { print $1; exit 0 }'
     return 0
   fi
 
-  if ! command -v emulator >/dev/null 2>&1; then
+  local emulator_bin
+  if ! emulator_bin="$(android_emulator_bin)"; then
     return 1
   fi
+  export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-"$HOME/.android/avd"}"
 
   local avd="${CYBORG_ANDROID_AVD:-}"
   if [[ -z "$avd" ]]; then
-    avd="$(emulator -list-avds 2>/dev/null | head -n 1)"
+    avd="$("$emulator_bin" -list-avds 2>/dev/null | head -n 1)"
   fi
   if [[ -z "$avd" ]]; then
     return 1
   fi
 
   log "Starting Android emulator: $avd"
-  emulator -avd "$avd" -no-window -no-audio -no-snapshot-save -gpu swiftshader_indirect >/tmp/cyborg-android-emulator.log 2>&1 &
+  "$emulator_bin" -avd "$avd" -no-window -no-audio -no-snapshot-save -gpu swiftshader_indirect >/tmp/cyborg-android-emulator.log 2>&1 &
   ANDROID_EMULATOR_PID="$!"
 
   local deadline=$((SECONDS + ANDROID_BOOT_TIMEOUT))

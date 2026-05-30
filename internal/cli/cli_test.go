@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,6 +16,12 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	originalHome := os.Getenv("HOME")
+	if os.Getenv("ANDROID_AVD_HOME") == "" && originalHome != "" {
+		avdHome := filepath.Join(originalHome, ".android", "avd")
+		if info, err := os.Stat(avdHome); err == nil && info.IsDir() {
+			_ = os.Setenv("ANDROID_AVD_HOME", avdHome)
+		}
+	}
 	if err := os.Setenv("HOME", home); err != nil {
 		panic(err)
 	}

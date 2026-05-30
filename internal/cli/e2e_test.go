@@ -473,6 +473,12 @@ func hasAndroidEmulatorRuntime() bool {
 	if home := os.Getenv("HOME"); home != "" {
 		candidates = append(candidates, home+"/Library/Android/sdk/emulator/emulator")
 	}
+	candidates = append(candidates,
+		"/opt/homebrew/share/android-commandlinetools/emulator/emulator",
+		"/usr/local/share/android-commandlinetools/emulator/emulator",
+		"/opt/homebrew/share/android-sdk/emulator/emulator",
+		"/usr/local/share/android-sdk/emulator/emulator",
+	)
 	for _, candidate := range candidates {
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
 			return true
