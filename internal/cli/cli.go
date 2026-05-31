@@ -134,7 +134,23 @@ func runHelpCommand(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stdout, "    --%-10s %s%s\n", p.Name, p.Description, req)
 		}
 	}
-	_, _ = fmt.Fprintln(stdout, "\nIf only one device exists, --device can be omitted.")
+	_, _ = fmt.Fprintf(stdout, `
+Usage:
+  cyborg do <action> [--device=<id>] [--timeout-ms=<ms>] [flags]
+
+Before using these actions:
+  1. Run cyborg ls first.
+  2. If one running %s device fits, use it directly.
+  3. If no running %s device fits, create one with cyborg up %s.
+  4. If multiple devices exist, pass --device=<id>.
+
+Result handling:
+  Command output is JSON. If ok is false, read error before retrying.
+  Use screenshot after important UI actions to verify what changed.
+  Use tree to inspect native UI targets when this device kind lists it.
+
+If only one device exists, --device can be omitted.
+`, kind, kind, kind)
 	return 0
 }
 

@@ -30,7 +30,7 @@ Actions that operate on UI elements accept a `--target` flag with a strategy pre
 
 ## Driver Self-Description
 
-Each driver implements `Actions() []ActionSpec`, letting the daemon serve action metadata dynamically via `GET /drivers/<kind>/actions`. This means `cyborg help browser` always reflects the real capabilities — no static text to drift.
+Each driver implements `Actions() []ActionSpec`, letting the daemon serve action metadata dynamically via `GET /drivers/<kind>/actions`. This means `cyborg help browser` always reflects the real capabilities — no static text to drift. The CLI wraps those driver-owned action facts with stable usage guidance: check devices first, create only when needed, pass `--device` when more than one target exists, and inspect JSON results before retrying.
 
 ## Agent Use
 
