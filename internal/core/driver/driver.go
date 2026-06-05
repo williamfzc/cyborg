@@ -12,6 +12,7 @@ import (
 type Summary struct {
 	Name         string      `json:"name"`
 	Kind         device.Kind `json:"kind"`
+	Engine       string      `json:"engine,omitempty"`
 	Backend      string      `json:"backend"`
 	Capabilities []string    `json:"capabilities"`
 	Notes        []string    `json:"notes,omitempty"`

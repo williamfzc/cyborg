@@ -110,7 +110,7 @@ func (s *Server) handleDriverActions(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/drivers/")
 	parts := strings.SplitN(path, "/", 2)
 	kind := device.Kind(parts[0])
-	actions, err := s.DriverActions(kind)
+	actions, err := s.DriverActions(kind, r.URL.Query().Get("engine"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return

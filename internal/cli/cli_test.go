@@ -76,9 +76,10 @@ func TestExecute_HelpListsSupportedDeviceKinds(t *testing.T) {
 		"Treat this help as the CLI reference, not as a complete operating guide.",
 		"Before real work, write a project-specific skill for the user.",
 		"When using a device kind, run cyborg help <kind> first.",
-		"cyborg up browser --headless",
+		"cyborg up browser --engine=playwright --headless",
 		"cyborg do click --target=\"text:Login\" --device=android-abc123",
-		"cyborg up ios --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100",
+		"--engine=<name> chooses the execution engine when the device is created.",
+		"cyborg up ios --engine=wda --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("expected help output to contain %q, got: %s", want, output)

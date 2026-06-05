@@ -67,7 +67,7 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	switch args[0] {
@@ -110,6 +110,12 @@ func runHelpCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	// cyborg help <kind> — query daemon for that kind's action list
 	kind := device.Kind(args[0])
+	options, err := parseKVFlags(args[1:])
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "parse options failed: %v\n", err)
+		return 1
+	}
+	engine := stringParam(options, "engine")
 	client := daemonclient.NewDefault()
 	if err := ensureDaemon(client); err != nil {
 		// Daemon not available; show static help
@@ -118,12 +124,16 @@ func runHelpCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	actions, err := client.DriverActions(ctx, kind)
+	actions, err := client.DriverActions(ctx, kind, engine)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "no driver registered for kind %q\n", kind)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "cyborg do — actions for %s devices:\n\n", kind)
+	if engine != "" {
+		_, _ = fmt.Fprintf(stdout, "cyborg do — actions for %s devices using %s engine:\n\n", kind, engine)
+	} else {
+		_, _ = fmt.Fprintf(stdout, "cyborg do — actions for %s devices:\n\n", kind)
+	}
 	for _, a := range actions {
 		_, _ = fmt.Fprintf(stdout, "  %-12s %s\n", a.Name, a.Description)
 		for _, p := range a.Params {
@@ -317,7 +327,7 @@ Usage:
   cyborg do <action> [flags]        Execute an action on a device
 
 Discovery:
-  cyborg help <kind>                Show actions for a device kind
+  cyborg help <kind> [--engine]     Show actions for a device kind or engine
   cyborg version                    Print version
 
 Supported kinds: browser, android, ios (more via drivers)
@@ -337,14 +347,20 @@ Targeting elements (--target flag):
   xy:<x>,<y>                        Screen coordinates
 
 Examples:
-  cyborg up browser --headless
+  cyborg up browser --engine=playwright --headless
   cyborg do open --url=https://example.com
   cyborg do click --target="css:button.submit"
   cyborg do screenshot
   cyborg do click --target="text:Login" --device=android-abc123
-  cyborg up ios --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100
+  cyborg up android --engine=adb --avd=<avd-name>
+  cyborg up ios --engine=wda --udid=<simulator-udid> --wda-url=http://127.0.0.1:8100
 
 If only one device exists, --device can be omitted.
+
+Engine selection:
+  --engine=<name> chooses the execution engine when the device is created.
+  If omitted, Cyborg uses the default engine for that device kind.
+  The selected engine is stored on the device and reused for later actions.
 
 Device reuse (no automatic pooling — caller decides):
   1. cyborg ls                        Check existing devices
@@ -396,4 +412,13 @@ func coerceValue(value string) any {
 		return i
 	}
 	return value
+}
+
+func stringParam(params map[string]any, key string) string {
+	value, ok := params[key]
+	if !ok {
+		return ""
+	}
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
 }

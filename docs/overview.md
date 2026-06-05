@@ -11,10 +11,12 @@ The public command is `cyborg`. Seven top-level verbs, no more:
 - `cyborg show <id>` shows device details.
 - `cyborg rm <id>` removes a device.
 - `cyborg do <action>` sends an action to a device.
-- `cyborg help <kind>` shows actions available for a device kind (queries daemon dynamically).
+- `cyborg help <kind>` shows actions available for a device kind or selected engine (queries daemon dynamically).
 - `cyborg version` prints the version.
 
 The CLI does not keep a current device. If exactly one device exists, `--device` may be omitted. If multiple devices exist, callers must pass `--device=<id>`.
+
+Device creation may include `--engine=<name>` to choose the execution engine for that device kind. If omitted, Cyborg uses the default engine for the kind. The chosen engine is stored on the device and reused for later actions; `cyborg do` never reselects an engine. Use `cyborg help <kind> --engine=<name>` to inspect an engine-specific action surface.
 
 ## Targeting Elements
 
@@ -38,11 +40,15 @@ CLI help is the API reference for Cyborg, not a complete operating guide. Before
 
 ## Current Drivers
 
-- `browser`: controls Chromium-compatible browsers through a daemon-owned CDP session.
-- `android`: creates or controls adb-managed Android emulator targets through adb and UIAutomator.
-- `ios`: boots or controls iOS Simulators through `xcrun simctl`; UI actions use WebDriverAgent at `http://127.0.0.1:8100` by default, with `--wda-url` available for overrides.
+- `browser` default engine `playwright`: controls Chromium-compatible browsers through a daemon-owned CDP session.
+- `android` default engine `adb`: creates or controls adb-managed Android emulator targets through adb and UIAutomator.
+- `android` optional engine `appium`: connects to an existing Appium server and creates a UiAutomator2 session.
+- `ios` default engine `wda`: boots or controls iOS Simulators through `xcrun simctl`; UI actions use WebDriverAgent at `http://127.0.0.1:8100` by default, with `--wda-url` available for overrides.
+- `ios` optional engine `appium`: connects to an existing Appium server and creates an XCUITest session.
 
-New drivers (Docker, remote VM) plug in by implementing the `Driver` interface and registering in the daemon. Zero CLI code changes required.
+Engines are not devices. A device is the thing being controlled; an engine is the implementation that controls it. Appium enters as an engine for Android and iOS targets, not as a separate `appium` device kind.
+
+New drivers (Docker, remote VM, Appium engines) plug in by implementing the `Driver` interface and registering in the daemon. Zero CLI code changes required when the kind and engine already fit the command model.
 
 ## Automation
 

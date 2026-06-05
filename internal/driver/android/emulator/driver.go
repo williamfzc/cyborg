@@ -44,6 +44,7 @@ func (d *Driver) Summary() coredriver.Summary {
 	return coredriver.Summary{
 		Name:    "android-emulator",
 		Kind:    device.KindAndroid,
+		Engine:  "adb",
 		Backend: "android/adb",
 		Capabilities: []string{
 			"click", "type", "press", "screenshot",

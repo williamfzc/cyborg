@@ -22,10 +22,14 @@ All commands are stateless. The daemon manages device lifecycle automatically â€
 cyborg ls
 
 # 2. If no suitable device exists, create one
-cyborg up browser --headless
+cyborg up browser --engine=playwright --headless
 cyborg up android                         # auto-starts an Android emulator when available
+cyborg up android --engine=adb            # choose the current Android execution engine explicitly
+cyborg up android --engine=appium --serial=<adb-serial>  # use an existing Appium server
 cyborg up android --avd=<avd-name>        # pick a specific Android emulator profile
 cyborg up ios                             # auto-boots an available iOS simulator; uses local WDA by default
+cyborg up ios --engine=wda                # choose the current iOS execution engine explicitly
+cyborg up ios --engine=appium --udid=<simulator-udid> --bundle-id=<bundle-id>  # use an existing Appium server
 cyborg up ios --udid=<simulator-udid>     # pick a specific iOS simulator
 cyborg up ios --wda-url=http://127.0.0.1:8100  # override the WDA endpoint
 

@@ -21,6 +21,8 @@ For the exact command rules and device selection behavior, see [Command Shape](d
 
 Cyborg's competitive point is not any single backend. It is the common surface across backends: bring up a target on demand, discover what it can do, send actions, collect results, and tear it down when the preview or verification is done.
 
+Execution engines sit below device kinds. For example, `android` can use either the `adb` or `appium` engine, while callers still operate an Android device through the same action protocol.
+
 The current driver list and behavior notes live in [Current Drivers](docs/overview.md#current-drivers).
 
 ## Install
@@ -62,7 +64,8 @@ Then either run `bin/cyborg` directly or put it on your `PATH`.
 
 ```bash
 cyborg ls
-cyborg up browser --headless
+cyborg up browser --engine=playwright --headless
+cyborg up android --engine=appium --serial=<adb-serial>
 cyborg help browser
 cyborg do open --url=https://example.com
 cyborg do screenshot

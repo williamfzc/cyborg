@@ -46,6 +46,7 @@ func (d *Driver) Summary() coredriver.Summary {
 	return coredriver.Summary{
 		Name:    "browser-playwright",
 		Kind:    device.KindBrowser,
+		Engine:  "playwright",
 		Backend: "chromium/cdp",
 		Capabilities: []string{
 			"open", "click", "type", "press", "screenshot", "eval",

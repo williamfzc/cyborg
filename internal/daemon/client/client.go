@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ func NewDefault() *Client {
 	return &Client{
 		baseURL: daemon.DefaultBaseURL(),
 		http: &http.Client{
-			Timeout: 2 * time.Minute,
+			Timeout: 10 * time.Minute,
 		},
 	}
 }
@@ -57,8 +58,12 @@ func (c *Client) Drivers(ctx context.Context) ([]coredriver.Summary, error) {
 	return out, json.NewDecoder(resp.Body).Decode(&out)
 }
 
-func (c *Client) DriverActions(ctx context.Context, kind device.Kind) ([]coredriver.ActionSpec, error) {
-	resp, err := c.do(ctx, http.MethodGet, "/drivers/"+string(kind)+"/actions", nil)
+func (c *Client) DriverActions(ctx context.Context, kind device.Kind, engine ...string) ([]coredriver.ActionSpec, error) {
+	path := "/drivers/" + string(kind) + "/actions"
+	if len(engine) > 0 && strings.TrimSpace(engine[0]) != "" {
+		path += "?engine=" + url.QueryEscape(strings.TrimSpace(engine[0]))
+	}
+	resp, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ import (
 	coredriver "github.com/williamfzc/cyborg/internal/core/driver"
 	"github.com/williamfzc/cyborg/internal/core/session"
 	androiddriver "github.com/williamfzc/cyborg/internal/driver/android/emulator"
+	appiumdriver "github.com/williamfzc/cyborg/internal/driver/appium"
 	browserdriver "github.com/williamfzc/cyborg/internal/driver/browser/playwright"
 	iosdriver "github.com/williamfzc/cyborg/internal/driver/ios/simulator"
 	"github.com/williamfzc/cyborg/internal/store/localstate"
@@ -43,7 +44,9 @@ func NewDefaultServer() (*Server, error) {
 		registry: coredriver.NewRegistry(
 			browserdriver.New(store),
 			androiddriver.New(store),
+			appiumdriver.NewAndroid(store),
 			iosdriver.New(store),
+			appiumdriver.NewIOS(store),
 		),
 	}
 	if err := srv.reconcileState(); err != nil {
@@ -71,18 +74,25 @@ func (s *Server) DriverSummaries() []coredriver.Summary {
 	return s.registry.Summaries()
 }
 
-func (s *Server) DriverActions(kind device.Kind) ([]coredriver.ActionSpec, error) {
-	return s.registry.Actions(kind)
+func (s *Server) DriverActions(kind device.Kind, engine string) ([]coredriver.ActionSpec, error) {
+	return s.registry.ActionsForEngine(kind, engine)
 }
 
 func (s *Server) Create(ctx context.Context, kind device.Kind, options map[string]any) (device.Device, error) {
-	d, err := s.registry.Get(kind)
+	engine := stringOption(options, "engine")
+	d, resolvedEngine, err := s.registry.GetEngine(kind, engine)
 	if err != nil {
 		return device.Device{}, err
 	}
 	dev, err := d.Create(ctx, coredriver.CreateSpec{Kind: kind, Options: options})
 	if err != nil {
 		return device.Device{}, err
+	}
+	if dev.Metadata == nil {
+		dev.Metadata = map[string]any{}
+	}
+	if dev.Metadata["engine"] == nil {
+		dev.Metadata["engine"] = resolvedEngine
 	}
 	sessionID := fmt.Sprintf("sess-%d", time.Now().UnixNano())
 	_, err = s.store.Update(func(state *localstate.State) error {
@@ -137,7 +147,7 @@ func (s *Server) Remove(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	d, err := s.registry.Get(dev.Kind)
+	d, err := s.driverForDevice(dev)
 	if err != nil {
 		return err
 	}
@@ -164,7 +174,7 @@ func (s *Server) Act(ctx context.Context, req action.Action) (action.Result, err
 	if req.DeviceID == "" {
 		req.DeviceID = dev.ID
 	}
-	d, err := s.registry.Get(dev.Kind)
+	d, err := s.driverForDevice(dev)
 	if err != nil {
 		return action.Result{}, err
 	}
@@ -185,6 +195,35 @@ func (s *Server) Act(ctx context.Context, req action.Action) (action.Result, err
 		return action.Result{}, updateErr
 	}
 	return result, nil
+}
+
+func (s *Server) driverForDevice(dev device.Device) (coredriver.Driver, error) {
+	d, _, err := s.registry.GetEngine(dev.Kind, stringMetadata(dev.Metadata, "engine"))
+	return d, err
+}
+
+func stringOption(options map[string]any, key string) string {
+	if options == nil {
+		return ""
+	}
+	value, ok := options[key]
+	if !ok {
+		return ""
+	}
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
+}
+
+func stringMetadata(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+	value, ok := metadata[key]
+	if !ok {
+		return ""
+	}
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
 }
 
 func (s *Server) reconcileState() error {

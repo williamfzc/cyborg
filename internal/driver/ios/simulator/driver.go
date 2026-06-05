@@ -57,6 +57,7 @@ func (d *Driver) Summary() coredriver.Summary {
 	return coredriver.Summary{
 		Name:    "ios-simulator",
 		Kind:    device.KindIOS,
+		Engine:  "wda",
 		Backend: "ios/simctl+wda",
 		Capabilities: []string{
 			"screenshot", "install", "launch", "terminate",

@@ -14,10 +14,21 @@ import (
 )
 
 // fakeDriver implements coredriver.Driver without external dependencies.
-type fakeDriver struct{}
+type fakeDriver struct {
+	name   string
+	engine string
+}
 
 func (f *fakeDriver) Summary() coredriver.Summary {
-	return coredriver.Summary{Name: "fake", Kind: device.KindBrowser, Backend: "fake"}
+	name := f.name
+	if name == "" {
+		name = "fake"
+	}
+	engine := f.engine
+	if engine == "" {
+		engine = "fake"
+	}
+	return coredriver.Summary{Name: name, Kind: device.KindBrowser, Engine: engine, Backend: engine}
 }
 
 func (f *fakeDriver) Actions() []coredriver.ActionSpec {
@@ -39,7 +50,7 @@ func (f *fakeDriver) Create(_ context.Context, spec coredriver.CreateSpec) (devi
 func (f *fakeDriver) Destroy(_ context.Context, _ device.Device) error { return nil }
 
 func (f *fakeDriver) Act(_ context.Context, _ device.Device, req action.Action) (action.Result, error) {
-	return action.Result{OK: true, Result: map[string]any{"action": req.Name}}, nil
+	return action.Result{OK: true, Result: map[string]any{"action": req.Name, "engine": f.Summary().Engine}}, nil
 }
 
 // newTestServer builds a Server backed by a temp-dir store and the fakeDriver.
@@ -230,5 +241,52 @@ func TestCreateActRemoveLifecycle(t *testing.T) {
 	_, err = srv.Device("")
 	if err == nil {
 		t.Fatal("expected error after removing device")
+	}
+}
+
+func TestCreateWithEngineRoutesActionsToThatEngine(t *testing.T) {
+	dir := t.TempDir()
+	store, err := localstate.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{
+		registry: coredriver.NewRegistry(
+			&fakeDriver{name: "default", engine: "default"},
+			&fakeDriver{name: "alternate", engine: "alternate"},
+		),
+		store: store,
+	}
+
+	created, err := srv.Create(context.Background(), device.KindBrowser, map[string]any{"engine": "alternate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := created.Metadata["engine"]; got != "alternate" {
+		t.Fatalf("expected stored engine alternate, got %v", got)
+	}
+
+	result, err := srv.Act(context.Background(), action.Action{DeviceID: created.ID, Name: "screenshot"})
+	if err != nil {
+		t.Fatalf("Act failed: %v", err)
+	}
+	payload, ok := result.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", result.Result)
+	}
+	if payload["engine"] != "alternate" {
+		t.Fatalf("expected alternate engine to handle action, got %v", payload["engine"])
+	}
+}
+
+func TestCreateWithUnknownEngineFails(t *testing.T) {
+	srv := newTestServer(t)
+
+	_, err := srv.Create(context.Background(), device.KindBrowser, map[string]any{"engine": "missing"})
+	if err == nil {
+		t.Fatal("expected unknown engine error")
+	}
+	if got, want := err.Error(), `no driver registered for kind "browser" with engine "missing"`; got != want {
+		t.Fatalf("unexpected error: %q, want %q", got, want)
 	}
 }
